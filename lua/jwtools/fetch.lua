@@ -1,4 +1,7 @@
 local M = {}
+
+local config = require("jwtools.config")
+local language_urls = require("jwtools.language_urls")
 local scripture = require("jwtools.scripture")
 local tooltip = require("jwtools.tooltip")
 
@@ -13,7 +16,13 @@ local function fetch_scripture()
 		return
 	end
 
-	local url = string.format("https://www.jw.org/es/biblioteca/biblia/biblia-estudio/libros/json/data/%s", ref_id)
+	local language = config.get("language")
+	local url = language_urls.get_url(language, ref_id)
+
+	if not url then
+		print("No valid language")
+		return
+	end
 
 	vim.fn.jobstart({ "curl", "-s", url }, {
 		stdout_buffered = true,
