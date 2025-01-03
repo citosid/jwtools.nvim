@@ -19,7 +19,7 @@ end
 local function get_reference_id(line, cursor_pos)
 	local scriptures = {}
 	for book, chapter, start_verse, next_chapter, end_verse in
-		line:gmatch("([%aáéíóúÁÉÍÓÚñÑ]+)%s*(%d+):(%d+)%s*%-?%s*(%d*):?(%d*)")
+		line:gmatch("([%d%aáéíóúÁÉÍÓÚñÑ]+)%s*(%d+):(%d+)%s*%-?%s*(%d*):?(%d*)")
 	do
 		table.insert(scriptures, {
 			book = book,

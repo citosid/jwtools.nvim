@@ -25,7 +25,7 @@ return {
 
 ## TODO
 
-- [ ] Add multiple languages
+- [x] Add multiple languages
 - [ ] Ability to search for a word and insert an scripture
 - [ ] Handle multiple scriptures in a row (for exammple `Ps 83:18; Rev 21:4`)
 - [ ] Handle different abbreviations for the Bible books (i. e.: Ps. 83:18; Ps 83:18; Psalms 83:18)
@@ -33,4 +33,5 @@ return {
 
 ## Known Issues
 
-- Currently only works for Spanish (although the scriptures should be written in English)
+- Spanish scriptures now need to have the scripture as a single word. For example, 1 Cor 1:1 will not work. But
+  1Cor 1:1 will Gál 1:1
