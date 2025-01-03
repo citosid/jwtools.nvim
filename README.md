@@ -26,6 +26,7 @@ return {
 ## TODO
 
 - [x] Add multiple languages
+- [x] Add loading spinner to show something is happenning
 - [ ] Ability to search for a word and insert an scripture
 - [ ] Handle multiple scriptures in a row (for exammple `Ps 83:18; Rev 21:4`)
 - [ ] Handle different abbreviations for the Bible books (i. e.: Ps. 83:18; Ps 83:18; Psalms 83:18)
