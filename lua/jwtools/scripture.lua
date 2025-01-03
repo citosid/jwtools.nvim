@@ -1,5 +1,7 @@
 local M = {}
+
 local books = require("jwtools.books")
+local config = require("jwtools.config")
 
 local function get_range(scripture, book_num)
 	local range_start = string.format("%s%03d%03d", book_num, scripture.chapter, scripture.start_verse)
@@ -16,7 +18,9 @@ end
 
 local function get_reference_id(line, cursor_pos)
 	local scriptures = {}
-	for book, chapter, start_verse, next_chapter, end_verse in line:gmatch("(%w+)%s*(%d+):(%d+)%s*%-?%s*(%d*):?(%d*)") do
+	for book, chapter, start_verse, next_chapter, end_verse in
+		line:gmatch("([%aáéíóúÁÉÍÓÚñÑ]+)%s*(%d+):(%d+)%s*%-?%s*(%d*):?(%d*)")
+	do
 		table.insert(scriptures, {
 			book = book,
 			chapter = tonumber(chapter),
@@ -41,7 +45,9 @@ local function get_reference_id(line, cursor_pos)
 		return vim.notify("No valid scripture reference found")
 	end
 
-	local book_num = books[nearest_scripture.book]
+	local language = config.get("language")
+
+	local book_num = books[language][nearest_scripture.book]
 	if not book_num then
 		return vim.notify("Invalid book")
 	end
