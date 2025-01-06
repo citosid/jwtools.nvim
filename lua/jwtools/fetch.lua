@@ -64,7 +64,13 @@ local function fetch_scripture()
 
 	local spinner = show_spinner()
 
-	vim.fn.jobstart({ "curl", "-s", url }, {
+	vim.fn.jobstart({
+		"curl",
+		"--user-agent",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+		"-s",
+		url,
+	}, {
 		stdout_buffered = true,
 		on_stdout = function(_, data)
 			local json = vim.fn.json_decode(table.concat(data, "\n"))
