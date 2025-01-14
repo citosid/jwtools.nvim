@@ -63,6 +63,14 @@ local function fetch_scripture()
 	end
 
 	local spinner = show_spinner()
+	local spinner_hidden = false
+
+	local function safe_hide_spinner()
+		if not spinner_hidden then
+			hide_spinner(spinner)
+			spinner_hidden = true
+		end
+	end
 
 	vim.fn.jobstart({
 		"curl",
@@ -73,14 +81,21 @@ local function fetch_scripture()
 	}, {
 		stdout_buffered = true,
 		on_stdout = function(_, data)
+			safe_hide_spinner()
+			if data == "" then
+				return
+			end
+
 			local json = vim.fn.json_decode(table.concat(data, "\n"))
-			hide_spinner(spinner)
 			if json.ranges == nil then
 				print("Scripture not found")
 				return
 			end
 
 			tooltip.show_verse_tooltip(ref_id, json)
+		end,
+		on_stderr = function()
+			safe_hide_spinner()
 		end,
 	})
 end

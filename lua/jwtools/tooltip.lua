@@ -6,7 +6,13 @@ local function show_verse_tooltip(ref_id, json)
 
 	for _, verse in ipairs(json.ranges[ref_id].verses) do
 		content = content
-			.. verse.content:gsub("<[^>]+>", ""):gsub("&nbsp;", " "):gsub("&amp;", "&"):gsub("\r", "")
+			.. verse
+				.content
+				:gsub("<[^>]+>", " ")
+				:gsub("&nbsp;", " ")
+				:gsub("&amp;", "&")
+				-- :gsub("\r", " ")
+				:gsub("%s+", " ")
 			.. "\n"
 	end
 
