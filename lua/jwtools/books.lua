@@ -50,6 +50,8 @@ local books = {
 		["Gál"] = "48",
 		Efes = "49",
 		Fil = "50",
+		Fili = "50",
+		Filip = "50",
 		Col = "51",
 		["1Tes"] = "52",
 		["2Tes"] = "53",
@@ -136,5 +138,11 @@ local books = {
 		Rev = "66",
 	},
 }
+
+for lang, translations in pairs(books) do
+	for key, value in pairs(translations) do
+		books[lang][key .. "."] = value -- Add a new entry with a dot appended
+	end
+end
 
 return books
