@@ -3,61 +3,116 @@ local M = {}
 local books = require("jwtools.books")
 local config = require("jwtools.config")
 
---- Parse verse list which may contain single verses, comma-separated verses, or ranges
---- Examples: "1", "1,2,3", "1-3", "1,3-5,7"
----@param verse_list string The verse portion after "chapter:"
----@return table[] List of { start_verse: number, end_verse: number }
-local function parse_verse_list(verse_list)
-	local verses = {}
+-- Non-breaking space bytes for pattern matching
+local NBSP = string.char(0xC2, 0xA0)
 
-	-- First, extract just the verse numbers portion (stop at space or end)
-	local verse_part = verse_list:match("^([%d%s,%-]+)")
-	if not verse_part then
+--- Merge consecutive single verses into ranges
+--- e.g., [{4,4}, {5,5}] -> [{4,5}]
+--- but [{4,7}, {10,10}] stays as is
+local function merge_consecutive_verses(verses)
+	if #verses <= 1 then
 		return verses
 	end
 
-	-- Split by comma and process each part
-	for part in verse_part:gmatch("([^,]+)") do
-		part = part:match("^%s*(.-)%s*$") -- trim whitespace
+	local merged = {}
+	local current = {
+		start_verse = verses[1].start_verse,
+		end_verse = verses[1].end_verse,
+		start_pos = verses[1].start_pos,
+		end_pos = verses[1].end_pos,
+	}
 
-		-- Check if it's a range (e.g., "1-3")
-		local range_start, range_end = part:match("^(%d+)%-(%d+)$")
-		if range_start and range_end then
-			table.insert(verses, {
-				start_verse = tonumber(range_start),
-				end_verse = tonumber(range_end),
-			})
+	for i = 2, #verses do
+		local v = verses[i]
+		if v.start_verse == current.end_verse + 1 then
+			current.end_verse = v.end_verse
+			current.end_pos = v.end_pos
 		else
-			-- Single verse
-			local single = part:match("^(%d+)$")
-			if single then
-				table.insert(verses, {
-					start_verse = tonumber(single),
-					end_verse = tonumber(single),
-				})
-			end
+			table.insert(merged, current)
+			current = {
+				start_verse = v.start_verse,
+				end_verse = v.end_verse,
+				start_pos = v.start_pos,
+				end_pos = v.end_pos,
+			}
 		end
 	end
 
-	return verses
+	table.insert(merged, current)
+	return merged
 end
 
-local function parse_verses(line)
+--- Find all verse groups in a line with their byte positions
+local function parse_scripture_references(line)
 	local scriptures = {}
-	for book, chapter, verse_list in line:gmatch("([%d%aáéíóúÁÉÍÓÚñÑ.]+)%s*(%d+):([%d%s,%-]+)") do
-		local language = config.get("language")
+	local language = config.get("language")
+
+	-- Pattern to match book, chapter, and verse list (including non-breaking spaces)
+	for book, chapter, verse_list in line:gmatch("([%d%aáéíóúÁÉÍÓÚñÑ.]+)%s*(%d+):([%d%s,%-" .. NBSP .. "]+)") do
 		local resolved_book = books.resolve_book_name(book, language)
 
 		if resolved_book then
-			local verses = parse_verse_list(verse_list)
+			-- Find where this match starts in the original line
+			local pattern = book:gsub("([%.%-%+%*%?%^%$%(%)%[%]%%])", "%%%1")
+			local match_start = line:find(pattern .. "%s*" .. chapter .. ":")
 
-			if #verses > 0 then
-				table.insert(scriptures, {
-					book = resolved_book,
-					chapter = tonumber(chapter),
-					verses = verses,
-					start_pos = line:find(book .. "%s*" .. chapter .. ":"),
-				})
+			if match_start then
+				local colon_pos = line:find(":", match_start)
+				local verse_groups = {}
+				local search_start = colon_pos + 1
+
+				local pos = 1
+				while pos <= #verse_list do
+					-- Skip whitespace, commas, and non-breaking spaces
+					local skip = verse_list:match("^[%s," .. NBSP .. "]+", pos)
+					if skip then
+						pos = pos + #skip
+						search_start = search_start + #skip
+					end
+
+					if pos > #verse_list then
+						break
+					end
+
+					-- Try to match a range (e.g., "4-7")
+					local full_match, verse_start, verse_end = verse_list:match("^((%d+)%-(%d+))", pos)
+					if full_match then
+						table.insert(verse_groups, {
+							start_verse = tonumber(verse_start),
+							end_verse = tonumber(verse_end),
+							start_pos = search_start,
+							end_pos = search_start + #full_match - 1,
+						})
+						pos = pos + #full_match
+						search_start = search_start + #full_match
+					else
+						-- Try to match a single verse
+						local single = verse_list:match("^(%d+)", pos)
+						if single then
+							table.insert(verse_groups, {
+								start_verse = tonumber(single),
+								end_verse = tonumber(single),
+								start_pos = search_start,
+								end_pos = search_start + #single - 1,
+							})
+							pos = pos + #single
+							search_start = search_start + #single
+						else
+							break
+						end
+					end
+				end
+
+				if #verse_groups > 0 then
+					verse_groups = merge_consecutive_verses(verse_groups)
+
+					table.insert(scriptures, {
+						book = resolved_book,
+						chapter = tonumber(chapter),
+						verses = verse_groups,
+						start_pos = match_start,
+					})
+				end
 			end
 		end
 	end
@@ -66,13 +121,14 @@ local function parse_verses(line)
 end
 
 local function get_reference_id(line, cursor_pos)
-	local scriptures = parse_verses(line)
+	local scriptures = parse_scripture_references(line)
 
 	if #scriptures == 0 then
 		error("No valid scripture reference found")
 		return nil
 	end
 
+	-- Find the nearest scripture reference
 	local nearest_scripture = nil
 	local min_distance = math.huge
 
@@ -99,21 +155,30 @@ local function get_reference_id(line, cursor_pos)
 		return nil
 	end
 
-	if nearest_scripture.verses and #nearest_scripture.verses > 0 then
-		local verse = nearest_scripture.verses[1]
-		local range_start = string.format("%s%03d%03d", book_num, nearest_scripture.chapter, verse.start_verse)
-
-		-- If it's a range, include the end verse
-		if verse.end_verse ~= verse.start_verse then
-			local range_end = string.format("%s%03d%03d", book_num, nearest_scripture.chapter, verse.end_verse)
-			return range_start .. "-" .. range_end
-		end
-
-		return range_start
+	if not nearest_scripture.verses or #nearest_scripture.verses == 0 then
+		error("No verses found in scripture reference")
+		return nil
 	end
 
-	error("No verses found in scripture reference")
-	return nil
+	-- Find the verse group where cursor is directly on top of it
+	local selected_verse = nearest_scripture.verses[1]
+
+	for _, verse in ipairs(nearest_scripture.verses) do
+		if cursor_pos >= verse.start_pos and cursor_pos <= verse.end_pos then
+			selected_verse = verse
+			break
+		end
+	end
+
+	-- Build the reference ID
+	local range_start = string.format("%s%03d%03d", book_num, nearest_scripture.chapter, selected_verse.start_verse)
+
+	if selected_verse.end_verse ~= selected_verse.start_verse then
+		local range_end = string.format("%s%03d%03d", book_num, nearest_scripture.chapter, selected_verse.end_verse)
+		return range_start .. "-" .. range_end
+	end
+
+	return range_start
 end
 
 M.get_reference_id = get_reference_id
