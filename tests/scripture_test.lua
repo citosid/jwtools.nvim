@@ -88,4 +88,19 @@ config.set("language", "en")
 assert_equals(scripture.get_reference_id("Gen. 1:1", 8), "1001001", "Gen. 1:1 (English)")
 assert_equals(scripture.get_reference_id("Gen. 1:1-3", 8), "1001001-1001003", "Gen. 1:1-3 (English)")
 
+print("\n=== Testing book with space (e.g., '2 Cor.') ===")
+config.set("language", "en")
+-- "2 Cor. 11:23" - cursor on various positions
+-- 2 Corinthians is book 47
+assert_equals(scripture.get_reference_id("2 Cor. 11:23", 1), "47011023", "2 Cor. 11:23 cursor on book")
+assert_equals(scripture.get_reference_id("2 Cor. 11:23", 8), "47011023", "2 Cor. 11:23 cursor on verse")
+
+print("\n=== Testing multiple chapters with semicolon ===")
+-- "2 Cor. 11:23; 12:7, 8" - two different chapters
+-- Position counting: 2Cor.=1-6, space=7, 11=8-9, :=10, 23=11-12, ;=13, space=14, 12=15-16, :=17, 7=18, ,=19, space=20, 8=21
+local line_multi = "2 Cor. 11:23; 12:7, 8"
+assert_equals(scripture.get_reference_id(line_multi, 11), "47011023", "multi-chapter: cursor on 23 -> 11:23")
+assert_equals(scripture.get_reference_id(line_multi, 18), "47012007-47012008", "multi-chapter: cursor on 7 -> 12:7-8 (merged)")
+assert_equals(scripture.get_reference_id(line_multi, 21), "47012007-47012008", "multi-chapter: cursor on 8 -> 12:7-8 (merged)")
+
 print("\n=== All tests passed! ===")
