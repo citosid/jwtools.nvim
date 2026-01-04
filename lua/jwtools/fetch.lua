@@ -6,6 +6,59 @@ local scripture = require("jwtools.scripture")
 local tooltip = require("jwtools.tooltip")
 
 local REGISTER = "j"
+local COOKIE_FILE = vim.fn.expand("~/.config/jwtools/cookies.txt")
+
+--- Refresh cookies by fetching the homepage
+---@param callback function|nil Called after cookies are refreshed
+local function refresh_cookies(callback)
+	local dir = vim.fn.expand("~/.config/jwtools")
+	if vim.fn.isdirectory(dir) == 0 then
+		vim.fn.mkdir(dir, "p")
+	end
+
+	vim.fn.jobstart({
+		"curl",
+		"-s",
+		"--compressed",
+		"-c", COOKIE_FILE,
+		"-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
+		"-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"-H", "Accept-Language: en-US,en;q=0.5",
+		"-H", "DNT: 1",
+		"-H", "Sec-GPC: 1",
+		"-H", "Connection: keep-alive",
+		"-H", "Upgrade-Insecure-Requests: 1",
+		"-H", "Sec-Fetch-Dest: document",
+		"-H", "Sec-Fetch-Mode: navigate",
+		"-H", "Sec-Fetch-Site: none",
+		"-H", "Sec-Fetch-User: ?1",
+		"--max-time", "10",
+		"https://www.jw.org/en",
+	}, {
+		on_exit = function(_, exit_code)
+			vim.schedule(function()
+				if exit_code == 0 and callback then
+					callback()
+				elseif exit_code ~= 0 then
+					vim.notify("Failed to refresh cookies", vim.log.levels.ERROR)
+				end
+			end)
+		end,
+	})
+end
+
+--- Check if cookies exist and are recent (less than 1 hour old)
+local function cookies_valid()
+	if vim.fn.filereadable(COOKIE_FILE) == 0 then
+		return false
+	end
+	local stat = vim.loop.fs_stat(COOKIE_FILE)
+	if not stat then
+		return false
+	end
+	local age = os.time() - stat.mtime.sec
+	return age < 3600 -- 1 hour
+end
 
 local function show_spinner()
 	local spinner_chars = { "⠋", "⠙", "⠹", "⠼", "⠽", "⠷" }
@@ -107,80 +160,98 @@ local function fetch_scripture_internal(opts)
 		return
 	end
 
-	local spinner = show_spinner()
-	local spinner_hidden = false
+	local function do_fetch()
+		local spinner = show_spinner()
+		local spinner_hidden = false
 
-	local function safe_hide_spinner()
-		if not spinner_hidden then
-			hide_spinner(spinner)
-			spinner_hidden = true
+		local function safe_hide_spinner()
+			if not spinner_hidden then
+				hide_spinner(spinner)
+				spinner_hidden = true
+			end
 		end
+
+		local curl_args = {
+			"curl",
+			"-s",
+			"--compressed",
+			"--max-time", "15",
+			"-b", COOKIE_FILE,
+			"-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
+			"-H", "Accept: application/json, text/javascript, */*; q=0.01",
+			"-H", "X-Requested-With: XMLHttpRequest",
+			"-H", "Referer: https://www.jw.org/en/library/bible/",
+			"-H", "Sec-Fetch-Dest: empty",
+			"-H", "Sec-Fetch-Mode: cors",
+			"-H", "Sec-Fetch-Site: same-origin",
+			url,
+		}
+
+		vim.fn.jobstart(curl_args, {
+			stdout_buffered = true,
+			on_stdout = function(_, data)
+				vim.schedule(function()
+					safe_hide_spinner()
+
+					if not data or #data == 0 or (data[1] == "" and #data == 1) then
+						vim.notify("Failed to fetch scripture: empty response", vim.log.levels.ERROR)
+						return
+					end
+
+					local decode_ok, json = pcall(vim.fn.json_decode, table.concat(data, "\n"))
+					if not decode_ok or not json then
+						vim.notify("Failed to parse scripture response", vim.log.levels.ERROR)
+						return
+					end
+
+					if json.ranges == nil then
+						vim.notify("Scripture not found", vim.log.levels.WARN)
+						return
+					end
+
+					local formatted = format_verse_content(json, ref_id)
+					if not formatted then
+						vim.notify("Scripture not found", vim.log.levels.WARN)
+						return
+					end
+
+					store_in_register(formatted.citation, formatted.content)
+
+					if show_tooltip then
+						tooltip.show_verse_tooltip(ref_id, json)
+					end
+
+					if show_notification then
+						vim.notify(formatted.citation .. " yanked")
+					end
+				end)
+			end,
+			on_stderr = function(_, data)
+				vim.schedule(function()
+					safe_hide_spinner()
+					if data and data[1] ~= "" then
+						vim.notify("Failed to fetch scripture: network error", vim.log.levels.ERROR)
+					end
+				end)
+			end,
+			on_exit = function(_, exit_code)
+				vim.schedule(function()
+					safe_hide_spinner()
+					if exit_code ~= 0 then
+						vim.notify("Failed to fetch scripture: curl error", vim.log.levels.ERROR)
+					end
+				end)
+			end,
+		})
 	end
 
-	vim.fn.jobstart({
-		"curl",
-		"--user-agent",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-		"-s",
-		"--max-time",
-		"10",
-		url,
-	}, {
-		stdout_buffered = true,
-		on_stdout = function(_, data)
-			vim.schedule(function()
-				safe_hide_spinner()
-
-				if not data or data[1] == "" then
-					vim.notify("Failed to fetch scripture: empty response", vim.log.levels.ERROR)
-					return
-				end
-
-				local decode_ok, json = pcall(vim.fn.json_decode, table.concat(data, "\n"))
-				if not decode_ok or not json then
-					vim.notify("Failed to parse scripture response", vim.log.levels.ERROR)
-					return
-				end
-
-				if json.ranges == nil then
-					vim.notify("Scripture not found", vim.log.levels.WARN)
-					return
-				end
-
-				local formatted = format_verse_content(json, ref_id)
-				if not formatted then
-					vim.notify("Scripture not found", vim.log.levels.WARN)
-					return
-				end
-
-				store_in_register(formatted.citation, formatted.content)
-
-				if show_tooltip then
-					tooltip.show_verse_tooltip(ref_id, json)
-				end
-
-				if show_notification then
-					vim.notify(formatted.citation .. " yanked")
-				end
-			end)
-		end,
-		on_stderr = function(_, data)
-			vim.schedule(function()
-				safe_hide_spinner()
-				if data and data[1] ~= "" then
-					vim.notify("Failed to fetch scripture: network error", vim.log.levels.ERROR)
-				end
-			end)
-		end,
-		on_exit = function(_, exit_code)
-			vim.schedule(function()
-				safe_hide_spinner()
-				if exit_code ~= 0 then
-					vim.notify("Failed to fetch scripture: curl error", vim.log.levels.ERROR)
-				end
-			end)
-		end,
-	})
+	-- Refresh cookies if needed, then fetch
+	if cookies_valid() then
+		do_fetch()
+	else
+		vim.notify("Refreshing cookies...", vim.log.levels.INFO)
+		refresh_cookies(do_fetch)
+	end
 end
 
 --- Fetch scripture: show tooltip AND yank to register

@@ -1,8 +1,8 @@
 local LanguageURLs = {}
 
 LanguageURLs.url_patterns = {
-	es = "https://www.jw.org/%s/biblioteca/biblia/biblia-estudio/libros/json/data/%s",
-	en = "https://www.jw.org/%s/library/bible/study-bible/books/json/data/%s",
+	es = "https://www.jw.org/%s/biblioteca/biblia/biblia-estudio/libros/json/html/%s",
+	en = "https://www.jw.org/%s/library/bible/study-bible/books/json/html/%s",
 }
 
 function LanguageURLs.get_url(language, ref_id)
