@@ -187,7 +187,8 @@ local function parse_scripture_references(line)
 				-- Normalize book name: remove internal spaces before lookup
 				local normalized_book = book:gsub("%s+", "")
 
-				local resolved_book = books.resolve_book_name(normalized_book, language)
+				-- Try normalized (no spaces) first, then fall back to the original token (e.g., "1 Pedro")
+				local resolved_book = books.resolve_book_name(normalized_book, language) or books.resolve_book_name(book, language)
 
 				if resolved_book then
 					found_book = true
