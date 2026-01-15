@@ -17,44 +17,32 @@ local function show_verse_tooltip(ref_id, json)
 	end
 
 	local lines = vim.split(content, "\n")
-	local wrapped_lines = {}
 
-	for _, line in ipairs(lines) do
-		local words = vim.split(line, " ")
-		local current_line = ""
-
-		for _, word in ipairs(words) do
-			if #current_line + #word + 1 > 60 then
-				table.insert(wrapped_lines, current_line)
-				current_line = word
-			else
-				if current_line ~= "" then
-					current_line = current_line .. " " .. word
-				else
-					current_line = word
-				end
-			end
-		end
-
-		if #current_line > 0 then
-			table.insert(wrapped_lines, current_line)
-		end
+	-- Compute longest line and constrain floating window width so wrap actually applies
+	local longest = 0
+	for _, l in ipairs(lines) do
+		longest = math.max(longest, #l)
 	end
-
-	local height = math.min(#wrapped_lines, 20)
-	local width = 0
-	for _, line in ipairs(wrapped_lines) do
-		width = math.max(width, #line)
-	end
+	local max_width = math.min(80, math.floor(vim.o.columns * 0.45))
+	local width = math.max(20, math.min(max_width, longest))
 
 	local opts = {
 		border = "rounded",
 		focusable = true,
-		height = height,
+		width = width,
 		title = title,
 	}
 
-	vim.lsp.util.open_floating_preview(wrapped_lines, "plaintext", opts)
+	-- open_floating_preview returns (bufnr, winid)
+	local bufnr, winid = vim.lsp.util.open_floating_preview(lines, "plaintext", opts)
+	if bufnr and winid then
+		-- Let the buffer/window handle wrapping instead of manual truncation
+		vim.api.nvim_buf_set_option(bufnr, "buftype", "nofile")
+		vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+		vim.api.nvim_win_set_option(winid, "wrap", true)
+		vim.api.nvim_win_set_option(winid, "linebreak", true)
+		vim.api.nvim_win_set_option(winid, "breakindent", true)
+	end
 end
 
 M.show_verse_tooltip = show_verse_tooltip
