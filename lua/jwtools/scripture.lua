@@ -48,24 +48,55 @@ local function parse_chapter_verses(line, search_from, book_name, resolved_book,
 	-- Find chapter:verses starting from search_from
 	-- Pattern: digits (chapter), colon, then verse list
 	local chapter_start = line:find("%d+:", search_from)
-	if not chapter_start then
-		return nil
-	end
+	local chapter
+	local verse_start
+	local verse_end
 
-	local colon_pos = line:find(":", chapter_start)
-	local chapter_str = line:sub(chapter_start, colon_pos - 1)
-	local chapter = tonumber(chapter_str)
-	if not chapter then
-		return nil
-	end
-
-	-- Now find the verse list - continues until we hit a semicolon or end of line
-	local verse_start = colon_pos + 1
-	local verse_end = line:find(";", verse_start)
-	if not verse_end then
-		verse_end = #line
+	if chapter_start then
+		local colon_pos = line:find(":", chapter_start)
+		local chapter_str = line:sub(chapter_start, colon_pos - 1)
+		chapter = tonumber(chapter_str)
+		if not chapter then
+			return nil
+		end
+		-- Now find the verse list - continues until we hit a semicolon or end of line
+		verse_start = colon_pos + 1
+		verse_end = line:find(";", verse_start)
+		if not verse_end then
+			verse_end = #line
+		else
+			verse_end = verse_end - 1
+		end
 	else
-		verse_end = verse_end - 1
+		-- No chapter:number pattern found. Some books have only one chapter (e.g., Jude/Judas, Philemon, Obadiah, 2 John, 3 John)
+		-- In those cases allow references like "Judas 22, 23" where the chapter is omitted and verses follow directly.
+		local single_chapter_books = {
+			["Jude"] = true, ["Jud"] = true,
+			["Philem"] = true, ["File"] = true,
+			["Obad"] = true, ["Abd"] = true,
+			["2John"] = true, ["2Juan"] = true,
+			["3John"] = true, ["3Juan"] = true,
+		}
+
+		if not single_chapter_books[resolved_book] then
+			return nil
+		end
+
+		-- Try to find verse digits directly at search_from
+		local digit_start = line:find("%d+", search_from)
+		if not digit_start or digit_start ~= search_from and line:sub(search_from, digit_start-1):match("%S") then
+			-- No immediate verse digits following the book; bail out
+			return nil
+		end
+
+		chapter = 1
+		verse_start = digit_start
+		verse_end = line:find(";", verse_start)
+		if not verse_end then
+			verse_end = #line
+		else
+			verse_end = verse_end - 1
+		end
 	end
 
 	local verse_list = line:sub(verse_start, verse_end)
