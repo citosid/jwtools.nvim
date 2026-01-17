@@ -151,6 +151,7 @@ local book_variations = {
 		["Fil"] = "Fil",
 		["Fil."] = "Fil",
 		["Filip"] = "Fil",
+		["Filip."] = "Fil",
 		["Fili"] = "Fil",
 		["Colosenses"] = "Col",
 		["Col"] = "Col",
